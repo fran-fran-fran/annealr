@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+
+[tool.coverage.run]
+source = ["src/annealr"]
+# Exclude Klipper integration layer from coverage measurement
+# annealr_manager.py and __init__.py depend on Klipper's runtime
+# objects and cannot be meaningfully unit tested in isolation.
+omit = [
+    "src/annealr/annealr_manager.py",
+    "src/annealr/__init__.py",
+]
+
+[tool.coverage.report]
+# Enforce high coverage only on pure-logic modules
+fail_under = 85
+show_missing = true
+skip_covered = false
+
+[tool.coverage.paths]
+source = ["src/annealr"]
