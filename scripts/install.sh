@@ -104,8 +104,8 @@ function preflight_checks {
 
 # ── Service control ───────────────────────────────────────────────
 
-function stop_service  { msg_info "Stopping ${SERVICE_NAME}...";  sudo systemctl stop  "${SERVICE_NAME}" || true; }
-function start_service { msg_info "Starting ${SERVICE_NAME}...";  sudo systemctl start "${SERVICE_NAME}" || true; }
+function stop_service  { msg_info "Stopping ${SERVICE_NAME}...";  sudo systemctl stop  "${SERVICE_NAME}"; }
+function start_service { msg_info "Starting ${SERVICE_NAME}...";  sudo systemctl start "${SERVICE_NAME}"; }
 
 # ── Install ───────────────────────────────────────────────────────
 
@@ -271,7 +271,7 @@ if [ "${UNINSTALL}" = true ]; then
     msg_info "Uninstalling annealr..."
     unlink_module
     start_service
-    sudo systemctl restart moonraker 2>/dev/null || true
+    sudo systemctl restart moonraker
     printf "\n"
     msg_ok "Uninstall complete."
     echo ""
@@ -288,7 +288,7 @@ else
         install_klipperscreen
     fi
     start_service
-    sudo systemctl restart moonraker 2>/dev/null || true
+    sudo systemctl restart moonraker
 
     printf "\n"
     msg_ok "Installation complete."
