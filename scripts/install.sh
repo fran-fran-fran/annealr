@@ -179,7 +179,7 @@ EOF
 function install_klipperscreen {
     local ks_dir="${HOME}/KlipperScreen"
     local ks_conf="${PRINTER_DATA}/config/KlipperScreen.conf"
-    local menu_src="${REPO_DIR}/klipperscreen/KlipperScreen_anneal_menu.conf"
+    local menu_src="${REPO_DIR}/klipperscreen/KlipperScreen_annealr_menu.conf"
     local panel_src="${REPO_DIR}/klipperscreen/panels/annealr.py"
 
     if [ ! -d "${ks_dir}" ]; then
