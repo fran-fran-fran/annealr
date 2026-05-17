@@ -1,0 +1,148 @@
+<!--
+  annealr: HelixScreen integration
+
+  Licensed under the GNU General Public License v3.0 (GPL-3.0)
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  File: annealr_panel.xml
+  Description: Declarative layout for the annealr annealing controller panel.
+               Left side: profile list, status text, control buttons.
+               Right side: temperature chart canvas (drawn via C++ callbacks).
+-->
+
+<component>
+  <view name="annealr_panel" extends="lv_obj"
+        width="100%" height="100%"
+        style_flex_flow="column"
+        style_pad_all="0"
+        style_bg_opa="0%">
+
+    <!-- ─── Main content: left controls + right chart ─── -->
+    <lv_obj name="annealr_main_row"
+            width="100%" style_flex_grow="1"
+            style_flex_flow="row"
+            style_pad_all="0"
+            style_bg_opa="0%">
+
+      <!-- ─── Left panel: profile list + controls ─── -->
+      <lv_obj name="annealr_left_panel"
+              width="280" height="100%"
+              style_flex_flow="column"
+              style_pad_all="#space_sm"
+              style_pad_row="#space_xs"
+              style_bg_opa="0%">
+
+        <!-- Header -->
+        <lv_label text="Profiles"
+                  style_text_font="#font_heading"
+                  style_text_color="#text_primary"/>
+
+        <!-- Profile list (scrollable) -->
+        <lv_list name="annealr_profile_list"
+                 width="100%" style_flex_grow="1"
+                 style_min_height="100"
+                 style_bg_color="#card_bg"
+                 style_radius="8"/>
+
+        <!-- Status text (multi-line, reactive) -->
+        <lv_label name="annealr_status_label"
+                  bind_text="annealr_status_text"
+                  width="100%"
+                  style_text_color="#text_secondary"
+                  style_text_font="#font_small"/>
+
+        <!-- ─── Control buttons: 2x2 grid ─── -->
+        <lv_obj name="annealr_button_grid"
+                width="100%" height="80"
+                style_flex_flow="row"
+                style_flex_main_place="space_evenly"
+                style_flex_cross_place="center"
+                style_flex_track_place="space_evenly"
+                style_flex_wrap="wrap"
+                style_pad_column="#space_xs"
+                style_pad_row="#space_xs"
+                style_bg_opa="0%">
+
+          <!-- Start button -->
+          <lv_button name="annealr_btn_start"
+                     width="48%" height="35">
+            <event_cb trigger="clicked" callback="on_annealr_start"/>
+            <!-- Disable when can_start == 0 -->
+            <lv_obj-bind_flag_if_eq subject="annealr_can_start"
+                                     flag="clickable"
+                                     ref_value="0"
+                                     negate="true"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_start"
+                                     flag="user_1"
+                                     ref_value="0"/>
+            <lv_label text="Start"
+                      style_text_color="#text_on_primary"/>
+          </lv_button>
+
+          <!-- Pause button -->
+          <lv_button name="annealr_btn_pause"
+                     width="48%" height="35">
+            <event_cb trigger="clicked" callback="on_annealr_pause"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_pause"
+                                     flag="clickable"
+                                     ref_value="0"
+                                     negate="true"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_pause"
+                                     flag="user_1"
+                                     ref_value="0"/>
+            <lv_label text="Pause"
+                      style_text_color="#text_on_primary"/>
+          </lv_button>
+
+          <!-- Resume button -->
+          <lv_button name="annealr_btn_resume"
+                     width="48%" height="35">
+            <event_cb trigger="clicked" callback="on_annealr_resume"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_resume"
+                                     flag="clickable"
+                                     ref_value="0"
+                                     negate="true"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_resume"
+                                     flag="user_1"
+                                     ref_value="0"/>
+            <lv_label text="Resume"
+                      style_text_color="#text_on_primary"/>
+          </lv_button>
+
+          <!-- Cancel button -->
+          <lv_button name="annealr_btn_cancel"
+                     width="48%" height="35">
+            <event_cb trigger="clicked" callback="on_annealr_cancel"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_cancel"
+                                     flag="clickable"
+                                     ref_value="0"
+                                     negate="true"/>
+            <lv_obj-bind_flag_if_eq subject="annealr_can_cancel"
+                                     flag="user_1"
+                                     ref_value="0"/>
+            <lv_label text="Cancel"
+                      style_text_color="#text_on_primary"/>
+          </lv_button>
+
+        </lv_obj>
+
+      </lv_obj>
+
+      <!-- ─── Right panel: temperature chart ─── -->
+      <lv_obj name="annealr_chart"
+              style_flex_grow="1" height="100%"
+              style_bg_color="#bg_dark"
+              style_bg_opa="100%"
+              style_radius="0"
+              style_pad_all="0"/>
+
+    </lv_obj>
+
+    <!-- ─── Bottom bar: disabled button styling ─── -->
+    <styles>
+      <style selector="LV_STATE_USER_1"
+             style_opa="128"/>
+    </styles>
+
+  </view>
+</component>

@@ -137,6 +137,33 @@ To show the chamber temperature in KlipperScreen's title bar, add:
 titlebar_items: annealer
 ```
 
+## HelixScreen integration
+
+For the modern LVGL-based touchscreen interface:
+
+```bash
+./scripts/install.sh --helixscreen
+```
+
+This copies the annealr panel source files (C++ headers, implementation,
+and XML layout) into your HelixScreen installation. HelixScreen must then
+be **rebuilt** to include the panel — the installer copies the source files
+but cannot modify the build system automatically.
+
+See `helixscreen/INTEGRATION.md` for the full integration guide covering:
+- Build system additions (CMakeLists.txt / Makefile)
+- Subject initialization and XML component registration
+- Moonraker status subscription wiring
+- Navigation panel registration
+
+The HelixScreen panel provides:
+- **Profile list** with descriptions and estimated durations
+- **Reactive controls** (Start/Pause/Resume/Cancel) that enable/disable
+  based on run state via LVGL subject bindings
+- **Temperature chart** with planned profile curve overlay and live
+  actual temperature trace
+- **Status display** with stage label, progress, and elapsed time
+
 ## Development
 
 Cross-platform development setup (Linux, macOS, Windows):
@@ -170,14 +197,25 @@ annealr/
 │   ├── state_machine.py  # State transitions, pause/resume time accounting
 │   └── watchdogs.py      # Ramp timeout, soak drift, cool stall detection
 ├── scripts/              # Installation scripts (Linux only)
-│   ├── install.sh
-│   
-├── klipperscreen/        # KlipperScreen integration
-│   ├── KlipperScreen_anneal_menu.conf
-│   └── panels/           # Custom panel (future)
+│   └── install.sh
+├── klipperscreen/        # KlipperScreen integration (Python/GTK3)
+│   ├── KlipperScreen_annealr_menu.conf
+│   └── panels/
+│       └── annealr.py    # Custom touchscreen panel
+├── helixscreen/          # HelixScreen integration (C++/LVGL)
+│   ├── INTEGRATION.md   # Step-by-step build integration guide
+│   ├── include/
+│   │   ├── annealr_state.h       # Domain state singleton (LVGL subjects)
+│   │   └── ui_panel_annealr.h    # Panel class (PanelBase subclass)
+│   ├── src/
+│   │   ├── printer/
+│   │   │   └── annealr_state.cpp # Status parsing, profile loading
+│   │   └── ui/
+│   │       └── ui_panel_annealr.cpp # Panel UI, chart rendering
+│   └── ui_xml/
+│       └── annealr_panel.xml     # Declarative XML layout
 ├── tests/
-│   ├── unit/             # pytest unit tests (cross-platform)
-│   └── integration/      # Kalico integration tests
+│   └── unit/             # pytest unit tests (cross-platform)
 ├── docs/examples/        # Example profile configs
 ├── setup_dev_env.py      # Cross-platform dev environment setup
 ├── moonraker.conf        # Moonraker update_manager snippet

@@ -92,22 +92,47 @@ class SoakDriftWatchdog:
 class CoolStallWatchdog:
     """Detects failure to cool during descending ramp segments.
 
-    If the chamber hasn't dropped by at least min_drop_c within
-    check_window_s seconds during a cooling segment, something
-    is likely wrong (fan failure, sealed door, etc.).
+    Uses two complementary strategies:
+
+    1. **Rate-aware check** (when the segment has an explicit rate):
+       Every check_window_s, verify that temperature has dropped by at
+       least (rate * window * fraction) where fraction accounts for PID
+       tracking lag and thermal inertia.
+
+    2. **Absolute minimum check** (fallback / unconstrained ramps):
+       If temperature hasn't dropped by at least min_drop_c from the
+       *rolling window start* within check_window_s, the cooling is
+       considered stalled. This catches fan failures and sealed doors.
+
+    A grace period at segment start allows the PID loop to react
+    before any checks fire.
     """
 
     def __init__(self, min_drop_c=5.0, check_window_s=300.0,
-                 grace_period_s=60.0):
+                 grace_period_s=120.0, rate_fraction=0.25):
         self.min_drop_c = min_drop_c
         self.check_window_s = check_window_s
         self.grace_period_s = grace_period_s
+        self.rate_fraction = rate_fraction
         self.log = logging.getLogger('annealr.watchdog.cool')
-        self._start_temp_c = None
 
-    def begin(self, start_temp_c):
-        """Called when a cooling segment begins."""
-        self._start_temp_c = start_temp_c
+        self._segment_rate = None   # °C/min from profile, or None
+        self._window_start_time = 0.0
+        self._window_start_temp = None
+        self._active = False
+
+    def begin(self, start_temp_c, ramp_rate=None):
+        """Called when a cooling segment begins.
+
+        Args:
+            start_temp_c: Temperature at the start of the segment.
+            ramp_rate: Segment ramp rate in °C/min (from profile), or
+                       None for unconstrained ramps.
+        """
+        self._window_start_temp = start_temp_c
+        self._window_start_time = 0.0
+        self._segment_rate = ramp_rate
+        self._active = True
 
     def check(self, elapsed_s, current_temp_c):
         """Check for cooling stall.
@@ -115,26 +140,61 @@ class CoolStallWatchdog:
         Returns:
             None if ok, or an error message string if stalled.
         """
-        if self._start_temp_c is None:
+        if not self._active:
+            return None
+
+        if self._window_start_temp is None:
             return None
 
         if elapsed_s < self.grace_period_s:
             return None
 
-        if elapsed_s < self.check_window_s:
+        window_elapsed = elapsed_s - self._window_start_time
+        if window_elapsed < self.check_window_s:
             return None
 
-        actual_drop = self._start_temp_c - current_temp_c
-        if actual_drop < self.min_drop_c:
+        # Time to evaluate the window
+        actual_drop = self._window_start_temp - current_temp_c
+
+        # Compute expected minimum drop for this window
+        expected_drop = self._compute_expected_drop(window_elapsed)
+
+        if actual_drop < expected_drop:
+            window_min = window_elapsed / 60.0
             return (
                 "Cooling stall: only dropped %.1f deg C in %.0fmin "
                 "(expected at least %.1f deg C). "
                 "Check chamber fan and door seal."
-                % (actual_drop, elapsed_s / 60.0, self.min_drop_c))
+                % (actual_drop, window_min, expected_drop))
+
+        # Window passed — slide forward: new window starts from here
+        self._window_start_temp = current_temp_c
+        self._window_start_time = elapsed_s
+
         return None
 
+    def _compute_expected_drop(self, window_s):
+        """Compute the minimum expected drop for a given window duration.
+
+        If the segment has an explicit rate, scale the expectation to that
+        rate (with a generous fraction to allow for PID tracking lag and
+        thermal inertia). Otherwise, fall back to the absolute minimum.
+        """
+        if self._segment_rate is not None and self._segment_rate > 0:
+            # Rate-based: expect at least fraction of the planned drop
+            window_min = window_s / 60.0
+            rate_drop = self._segment_rate * window_min * self.rate_fraction
+            # But never demand less than a minimal sanity floor (0.5°C)
+            # to still catch truly dead cooling
+            return max(rate_drop, 0.5)
+        else:
+            return self.min_drop_c
+
     def reset(self):
-        self._start_temp_c = None
+        self._window_start_temp = None
+        self._window_start_time = 0.0
+        self._segment_rate = None
+        self._active = False
 
 
 class WatchdogManager:
@@ -142,13 +202,15 @@ class WatchdogManager:
 
     def __init__(self, ramp_safety_factor=3.0, soak_drift_limit_c=10.0,
                  soak_drift_checks=6, cool_min_drop_c=5.0,
-                 cool_check_window_s=300.0, cool_grace_s=60.0):
+                 cool_check_window_s=300.0, cool_grace_s=120.0,
+                 cool_rate_fraction=0.25):
         self.ramp_wd = RampTimeoutWatchdog(ramp_safety_factor)
         self.soak_wd = SoakDriftWatchdog(soak_drift_limit_c,
                                           soak_drift_checks)
         self.cool_wd = CoolStallWatchdog(cool_min_drop_c,
                                           cool_check_window_s,
-                                          cool_grace_s)
+                                          cool_grace_s,
+                                          cool_rate_fraction)
         self.log = logging.getLogger('annealr.watchdog')
 
     def begin_segment(self, segment, start_temp_c):
@@ -160,7 +222,8 @@ class WatchdogManager:
         if segment.kind == 'ramp':
             self.ramp_wd.begin(segment, start_temp_c)
             if segment.is_descending_from(start_temp_c):
-                self.cool_wd.begin(start_temp_c)
+                self.cool_wd.begin(start_temp_c,
+                                   ramp_rate=segment.ramp_rate)
 
     def check(self, state, elapsed_s, current_temp_c, target_c):
         """Run the appropriate watchdog check for the current state.

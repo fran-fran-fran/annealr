@@ -20,6 +20,7 @@ KLIPPY_ENV="${DEFAULT_KLIPPY_ENV}"
 PRINTER_DATA="${DEFAULT_PRINTER_DATA}"
 
 INSTALL_KS=false
+INSTALL_HS=false
 UNINSTALL=false
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ function display_help {
     echo "  -e, --klippy-env <dir>    Klippy venv directory (default: ${DEFAULT_KLIPPY_ENV})"
     echo "  -d, --printer-data <dir>  Printer data directory (default: ${DEFAULT_PRINTER_DATA})"
     echo "  --klipperscreen           Also install KlipperScreen menu config"
+    echo "  --helixscreen             Also install HelixScreen panel"
     echo "  --uninstall               Remove the plugin"
     echo "  --help                    Show this help message"
     exit 0
@@ -51,6 +53,7 @@ function parse_args {
             -e|--klippy-env)    KLIPPY_ENV="$2";  shift 2 ;;
             -d|--printer-data)  PRINTER_DATA="$2"; shift 2 ;;
             --klipperscreen)    INSTALL_KS=true;   shift   ;;
+            --helixscreen)      INSTALL_HS=true;   shift   ;;
             --uninstall)        UNINSTALL=true;    shift   ;;
             --help)             display_help ;;
             *) msg_error "Unknown option: $1"; display_help ;;
@@ -219,6 +222,98 @@ function install_klipperscreen {
     sudo systemctl restart KlipperScreen 2>/dev/null || true
 }
 
+function install_helixscreen {
+    local hs_dir=""
+
+    # Auto-detect HelixScreen install location
+    for candidate in "${HOME}/helixscreen" "/opt/helixscreen"; do
+        if [ -d "${candidate}" ]; then
+            hs_dir="${candidate}"
+            break
+        fi
+    done
+
+    if [ -z "${hs_dir}" ]; then
+        msg_warn "HelixScreen not found at ~/helixscreen or /opt/helixscreen, skipping."
+        msg_info "If HelixScreen is installed elsewhere, copy files manually."
+        msg_info "See helixscreen/INTEGRATION.md for details."
+        return
+    fi
+
+    msg_info "Found HelixScreen at ${hs_dir}"
+
+    local hs_src="${REPO_DIR}/helixscreen"
+    local files_copied=0
+
+    # Copy C++ headers
+    if [ -d "${hs_dir}/include" ]; then
+        for header in annealr_state.h ui_panel_annealr.h; do
+            if [ -f "${hs_src}/include/${header}" ]; then
+                cp "${hs_src}/include/${header}" "${hs_dir}/include/${header}"
+                msg_ok "Copied: include/${header}"
+                files_copied=$((files_copied + 1))
+            fi
+        done
+    else
+        msg_warn "HelixScreen include/ directory not found, skipping headers."
+    fi
+
+    # Copy C++ source files
+    if [ -d "${hs_dir}/src/printer" ]; then
+        if [ -f "${hs_src}/src/printer/annealr_state.cpp" ]; then
+            cp "${hs_src}/src/printer/annealr_state.cpp" \
+               "${hs_dir}/src/printer/annealr_state.cpp"
+            msg_ok "Copied: src/printer/annealr_state.cpp"
+            files_copied=$((files_copied + 1))
+        fi
+    else
+        msg_warn "HelixScreen src/printer/ directory not found."
+    fi
+
+    if [ -d "${hs_dir}/src/ui" ]; then
+        if [ -f "${hs_src}/src/ui/ui_panel_annealr.cpp" ]; then
+            cp "${hs_src}/src/ui/ui_panel_annealr.cpp" \
+               "${hs_dir}/src/ui/ui_panel_annealr.cpp"
+            msg_ok "Copied: src/ui/ui_panel_annealr.cpp"
+            files_copied=$((files_copied + 1))
+        fi
+    else
+        msg_warn "HelixScreen src/ui/ directory not found."
+    fi
+
+    # Copy XML layout
+    local xml_dir="${hs_dir}/ui_xml"
+    if [ ! -d "${xml_dir}" ]; then
+        # Try alternate locations
+        for alt in "${hs_dir}/xml" "${hs_dir}/assets/xml"; do
+            if [ -d "${alt}" ]; then
+                xml_dir="${alt}"
+                break
+            fi
+        done
+    fi
+
+    if [ -d "${xml_dir}" ]; then
+        if [ -f "${hs_src}/ui_xml/annealr_panel.xml" ]; then
+            cp "${hs_src}/ui_xml/annealr_panel.xml" \
+               "${xml_dir}/annealr_panel.xml"
+            msg_ok "Copied: ui_xml/annealr_panel.xml"
+            files_copied=$((files_copied + 1))
+        fi
+    else
+        msg_warn "HelixScreen XML directory not found, skipping layout."
+    fi
+
+    if [ "${files_copied}" -gt 0 ]; then
+        msg_ok "Copied ${files_copied} HelixScreen files"
+        msg_warn "HelixScreen must be rebuilt to include the annealr panel."
+        msg_info "See helixscreen/INTEGRATION.md for build system and wiring steps."
+        msg_info "A HelixScreen restart is needed after rebuild."
+    else
+        msg_warn "No HelixScreen files were copied. Check your HelixScreen installation."
+    fi
+}
+
 # ── Uninstall ─────────────────────────────────────────────────────
 
 function unlink_module {
@@ -246,6 +341,25 @@ function unlink_module {
         rm "${panel_link}"
         msg_ok "Removed KlipperScreen panel symlink"
     fi
+
+    # Remove HelixScreen files if present
+    for hs_dir in "${HOME}/helixscreen" "/opt/helixscreen"; do
+        if [ -d "${hs_dir}" ]; then
+            for hs_file in \
+                "${hs_dir}/include/annealr_state.h" \
+                "${hs_dir}/include/ui_panel_annealr.h" \
+                "${hs_dir}/src/printer/annealr_state.cpp" \
+                "${hs_dir}/src/ui/ui_panel_annealr.cpp" \
+                "${hs_dir}/ui_xml/annealr_panel.xml" \
+                "${hs_dir}/xml/annealr_panel.xml" \
+                "${hs_dir}/assets/xml/annealr_panel.xml"; do
+                if [ -f "${hs_file}" ]; then
+                    rm "${hs_file}"
+                    msg_ok "Removed HelixScreen file: ${hs_file}"
+                fi
+            done
+        fi
+    done
 
     # Clean up git exclude entries
     local exclude_file="${KLIPPER_DIR}/.git/info/exclude"
@@ -280,12 +394,16 @@ if [ "${UNINSTALL}" = true ]; then
     echo "  - Any [annealr_profile ...] sections from printer.cfg"
     echo "  - [update_manager annealr] from moonraker.conf"
     echo "  - Annealr menu entries from KlipperScreen.conf (if added)"
+    echo "  - Rebuild HelixScreen if annealr panel was integrated"
 else
     msg_info "Installing annealr..."
     link_module
     add_moonraker_updater
     if [ "${INSTALL_KS}" = true ]; then
         install_klipperscreen
+    fi
+    if [ "${INSTALL_HS}" = true ]; then
+        install_helixscreen
     fi
     start_service
     sudo systemctl restart moonraker
@@ -299,8 +417,15 @@ else
     echo "       [annealr]"
     echo "       heater: annealer"
     echo ""
-    if [ "${INSTALL_KS}" = false ]; then
-        echo "  2. For KlipperScreen integration, re-run with --klipperscreen"
+    if [ "${INSTALL_KS}" = false ] && [ "${INSTALL_HS}" = false ]; then
+        echo "  2. For touchscreen integration, re-run with:"
+        echo "       --klipperscreen   (for KlipperScreen)"
+        echo "       --helixscreen     (for HelixScreen)"
+        echo ""
+    fi
+    if [ "${INSTALL_HS}" = true ]; then
+        echo "  2. Rebuild HelixScreen to include the annealr panel."
+        echo "     See helixscreen/INTEGRATION.md for build and wiring steps."
         echo ""
     fi
     echo "  3. Restart ${SERVICE_NAME}:"
