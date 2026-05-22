@@ -230,6 +230,7 @@ class AnnealrStateMachine:
                 'label': seg.make_label(),
                 'target': seg.target_c,
                 'kind': seg.kind,
+                'rate': None,
             }
 
             if self.executor:
@@ -239,6 +240,11 @@ class AnnealrStateMachine:
                 stage_info['remaining_s'] = remaining if remaining else 0.0
                 stage_info['progress'] = self.executor.progress(
                     adj_time, current_temp_c)
+                if self.executor._effective_rate is not None:
+                    rate = self.executor._effective_rate
+                    if self.executor._is_descending:
+                        rate = -rate
+                    stage_info['rate'] = round(rate, 2)
 
             status['stage'] = stage_info
 
